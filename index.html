@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Задачи проектов v3.2</title>
+  <title>Задачи проектов v3.3</title>
   
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -62,12 +62,13 @@
     .notice-box a {
       background: #eab308;
       color: #fff;
-      padding: 4px 8px;
-      border-radius: 4px;
+      padding: 5px 10px;
+      border-radius: 6px;
       text-decoration: none;
       font-weight: 600;
       white-space: nowrap;
       margin-left: 8px;
+      cursor: pointer;
     }
     .card {
       background: var(--card);
@@ -198,17 +199,17 @@
 <body>
 
   <div class="header">
-    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.2)</span></h1>
+    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.3)</span></h1>
     <span id="roleBadge" class="badge">Загрузка...</span>
   </div>
 
-  <!-- Предупреждение для пользователя, если он еще не запустил бота в личке -->
+  <!-- Плашка согласия на пуши -->
   <div id="startBotNotice" class="notice-box" style="display: none;">
     <span>Включите уведомления, чтобы бот мог присылать вам статус задач</span>
-    <a id="botStartBtn" target="_blank">Включить</a>
+    <a id="botStartBtn" onclick="enableNotifications()">Включить</a>
   </div>
 
-  <!-- Панель управления правами для админа -->
+  <!-- Панель управления разрешениями для администратора -->
   <div id="adminSettingsPanel" class="settings-bar" style="display: none;">
     <span>Клиентам разрешено ставить задачи:</span>
     <label>
@@ -217,10 +218,10 @@
     </label>
   </div>
 
-  <!-- Форма добавления задачи -->
+  <!-- Карточка добавления задачи -->
   <div class="card" id="createTaskCard">
     <div id="adminProjectSelect" style="display: none;">
-      <label><b>ID проекта (имя заказчика):</b></label>
+      <label><b>ID проекта (комната):</b></label>
       <input type="text" id="projectInput" placeholder="Например: katya">
     </div>
 
@@ -233,7 +234,7 @@
     <button class="btn-primary" onclick="addTask()">Добавить задачу</button>
   </div>
 
-  <!-- Фильтр для админа -->
+  <!-- Фильтр проектов для администратора -->
   <div id="filterContainer" style="display: none; margin-bottom: 12px;">
     <label style="font-size: 12px; color: var(--hint);">Фильтр по проекту:</label>
     <select id="projectFilter" onchange="filterTasks()">
@@ -245,7 +246,7 @@
 
   <script>
     // =================================================================
-    // ВАШИ НАСТРОЙКИ:
+    // НАСТРОЙКИ:
     const ADMIN_TELEGRAM_ID = 487609648;
     const BOT_TOKEN = '8948920326:AAE0jFBqpVvegW1pi-UoVds89f5CTHzR4to';
     const BOT_USERNAME = 'my_timer_tasks_bot';
@@ -262,13 +263,13 @@
       tg.expand();
     }
 
-    // Приведение имени комнаты к единому нижнему регистру без пробелов
     function normalizeRoom(name) {
-      if (!name) return 'general';
+      if (!name) return '';
       return String(name).trim().toLowerCase();
     }
 
-    function getRoomIdentifier() {
+    // Извлечение параметра напрямую из ссылки
+    function getExplicitRoomFromUrl() {
       let raw = null;
       if (tg?.initDataUnsafe?.start_param) raw = tg.initDataUnsafe.start_param;
       if (!raw && tg?.initData) {
@@ -285,54 +286,106 @@
         const hashMatch = window.location.hash.match(/tgWebAppStartParam=([^&]+)/);
         if (hashMatch && hashMatch[1]) raw = decodeURIComponent(hashMatch[1]);
       }
-      if (!raw && tg?.initDataUnsafe?.user?.id) {
-        raw = 'user_' + tg.initDataUnsafe.user.id;
-      }
-
-      return normalizeRoom(raw || 'general');
+      return normalizeRoom(raw);
     }
 
-    const currentRoom = getRoomIdentifier();
     const currentUserId = tg?.initDataUnsafe?.user?.id ? Number(tg.initDataUnsafe.user.id) : null;
     const currentUserName = tg?.initDataUnsafe?.user?.first_name || 'Участник';
     const isAdmin = (Number(currentUserId) === Number(ADMIN_TELEGRAM_ID));
 
-    // Настройка баннера для активации бота
-    if (!isAdmin) {
-      const noticeBox = document.getElementById('startBotNotice');
-      const startBtn = document.getElementById('botStartBtn');
-      startBtn.href = `https://t.me/${BOT_USERNAME}?start=${currentRoom}`;
-      noticeBox.style.display = 'flex';
+    let currentRoom = getExplicitRoomFromUrl();
+
+    // Если заказчик открыл без параметра (из меню бота), достаем его сохраненный проект
+    if (!currentRoom && !isAdmin) {
+      currentRoom = localStorage.getItem('last_project_room') || '';
     }
 
     const roleBadge = document.getElementById('roleBadge');
-    if (isAdmin) {
-      roleBadge.textContent = '👑 Режим Администратора';
-      document.getElementById('adminProjectSelect').style.display = 'block';
-      document.getElementById('adminSettingsPanel').style.display = 'flex';
-      document.getElementById('filterContainer').style.display = 'block';
-      document.getElementById('projectInput').value = (currentRoom !== 'general' && !currentRoom.startsWith('user_')) ? currentRoom : 'katya';
-    } else {
-      roleBadge.textContent = `📁 Пространство: ${currentRoom}`;
+
+    function updateHeaderUI() {
+      if (isAdmin) {
+        roleBadge.textContent = '👑 Режим Администратора';
+        document.getElementById('adminProjectSelect').style.display = 'block';
+        document.getElementById('adminSettingsPanel').style.display = 'flex';
+        document.getElementById('filterContainer').style.display = 'block';
+        document.getElementById('projectInput').value = (currentRoom && currentRoom !== 'general') ? currentRoom : 'katya';
+      } else {
+        roleBadge.textContent = `📁 Проект: ${currentRoom || 'Загрузка...'}`;
+      }
     }
+
+    updateHeaderUI();
 
     let allTasks = [];
 
-    // Регистрация в базе подписчиков
-    async function registerMember() {
+    // Привязка пользователя к проекту и восстановление комнаты из БД
+    async function resolveUserProject() {
       if (!currentUserId) return;
-      try {
+
+      // Если комната передана явно в ссылке — сохраняем её для заказчика
+      if (currentRoom) {
+        localStorage.setItem('last_project_room', currentRoom);
         await client.from('project_members').upsert({
           chat_id: currentRoom,
           user_id: currentUserId,
           user_name: currentUserName
         });
-      } catch (err) {
-        console.error('Ошибка регистрации участника:', err);
+      } else if (!isAdmin) {
+        // Если параметра не было — ищем последний проект заказчика в базе
+        const { data } = await client
+          .from('project_members')
+          .select('chat_id, notifications_enabled')
+          .eq('user_id', currentUserId)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+
+        if (data && data.length > 0 && data[0].chat_id) {
+          currentRoom = normalizeRoom(data[0].chat_id);
+          localStorage.setItem('last_project_room', currentRoom);
+          updateHeaderUI();
+        } else {
+          currentRoom = 'general';
+          updateHeaderUI();
+        }
+      }
+
+      // Проверка плашки уведомлений
+      if (!isAdmin) {
+        const { data: member } = await client
+          .from('project_members')
+          .select('notifications_enabled')
+          .eq('chat_id', currentRoom)
+          .eq('user_id', currentUserId)
+          .single();
+
+        if (member && member.notifications_enabled) {
+          document.getElementById('startBotNotice').style.display = 'none';
+        } else {
+          document.getElementById('startBotNotice').style.display = 'flex';
+        }
+      }
+    }
+
+    // Клик по кнопке «Включить»
+    async function enableNotifications() {
+      document.getElementById('startBotNotice').style.display = 'none';
+      if (currentUserId && currentRoom) {
+        await client.from('project_members').upsert({
+          chat_id: currentRoom,
+          user_id: currentUserId,
+          notifications_enabled: true
+        });
+      }
+      // Открываем диалог с ботом для старта
+      if (tg?.openTelegramLink) {
+        tg.openTelegramLink(`https://t.me/${BOT_USERNAME}?start=${currentRoom}`);
+      } else {
+        window.open(`https://t.me/${BOT_USERNAME}?start=${currentRoom}`, '_blank');
       }
     }
 
     async function checkPermissions() {
+      if (!currentRoom) return;
       const { data } = await client.from('project_settings').select('*').eq('chat_id', currentRoom).single();
       const allowCreate = data ? data.allow_client_create : false;
 
@@ -352,11 +405,10 @@
       });
     }
 
-    // Надежная рассылка уведомлений
     async function sendPushNotification(targetRoom, messageText) {
       try {
         const normRoom = normalizeRoom(targetRoom);
-        const { data: members, error } = await client
+        const { data: members } = await client
           .from('project_members')
           .select('user_id')
           .eq('chat_id', normRoom);
@@ -365,7 +417,7 @@
         if (members && members.length > 0) {
           members.forEach(m => idSet.add(Number(m.user_id)));
         }
-        idSet.add(ADMIN_TELEGRAM_ID); // Админу отправляем всегда
+        idSet.add(ADMIN_TELEGRAM_ID);
 
         const recipientIds = Array.from(idSet).filter(id => !isNaN(id) && id > 0);
 
@@ -379,14 +431,14 @@
           })
         });
       } catch (e) {
-        console.error('Сбой отправки уведомления:', e);
+        console.error('Ошибка отправки уведомления:', e);
       }
     }
 
     async function loadTasks() {
       let query = client.from('group_tasks').select('*').order('id', { ascending: false });
       if (!isAdmin) {
-        query = query.eq('chat_id', currentRoom);
+        query = query.eq('chat_id', currentRoom || 'none');
       }
       const { data } = await query;
       if (data) {
@@ -624,12 +676,13 @@
       .channel('app_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_tasks' }, () => loadTasks())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => checkPermissions())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_members' }, () => {})
       .subscribe();
 
-    registerMember();
-    checkPermissions();
-    loadTasks();
+    // Запуск инициализации с автоопределением комнаты
+    resolveUserProject().then(() => {
+      checkPermissions();
+      loadTasks();
+    });
   </script>
 </body>
 </html>
