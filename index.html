@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Задачи проектов v3.0</title>
+  
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #f4f4f5);
+      --card: var(--tg-theme-secondary-bg-color, #ffffff);
+      --text: var(--tg-theme-text-color, #18181b);
+      --hint: var(--tg-theme-hint-color, #71717a);
+      --btn: var(--tg-theme-button-color, #2563eb);
+      --btn-text: var(--tg-theme-button-text-color, #ffffff);
+
+      --active-border: #22c55e;
+      --active-bg: #f0fdf4;
+      --paused-border: #eab308;
+      --paused-bg: #fefce8;
+      --expired-border: #ef4444;
+      --expired-bg: #fef2f2;
+      --completed-border: #64748b;
+      --completed-bg: #f8fafc;
+    }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      box-sizing: border-box;
+    }
+    .header { margin-bottom: 12px; }
+    h1 { font-size: 20px; margin: 0 0 4px 0; }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: #e0f2fe;
+      color: #0369a1;
+      margin-top: 4px;
+    }
+    .card {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      margin-bottom: 16px;
+    }
+    .settings-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #f1f5f9;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .settings-bar label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    input, select, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 6px;
+      margin-bottom: 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(0,0,0,0.15);
+      box-sizing: border-box;
+      font-size: 15px;
+      background: #fff;
+    }
+    button.btn-primary {
+      background: var(--btn);
+      color: var(--btn-text);
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .task-item {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      border-left: 6px solid #d4d4d8;
+    }
+    .task-item.status-active { border-left-color: var(--active-border); background: var(--active-bg); }
+    .task-item.status-paused { border-left-color: var(--paused-border); background: var(--paused-bg); }
+    .task-item.status-expired { border-left-color: var(--expired-border); background: var(--expired-bg); }
+    .task-item.status-completed { border-left-color: var(--completed-border); background: var(--completed-bg); opacity: 0.75; }
+
+    .task-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .task-title { font-weight: 600; font-size: 16px; margin-bottom: 4px; }
+    .task-project-tag {
+      font-size: 11px;
+      color: #0369a1;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .task-timer {
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: bold;
+      margin-top: 4px;
+    }
+    .status-active .task-timer { color: #15803d; }
+    .status-paused .task-timer { color: #a16207; }
+    .status-expired .task-timer { color: #b91c1c; }
+    .status-completed .task-timer { color: #475569; text-decoration: line-through; }
+
+    .task-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-icon {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.1);
+      border-radius: 6px;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn-icon.complete { color: #16a34a; border-color: rgba(22,163,74,0.3); }
+    .btn-icon.delete { color: #ef4444; border-color: rgba(239,68,68,0.3); }
+
+    .task-share-link {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--hint);
+      word-break: break-all;
+    }
+    .copy-chip {
+      background: #e2e8f0;
+      color: #334155;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      margin-left: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.0)</span></h1>
+    <span id="roleBadge" class="badge">Загрузка...</span>
+  </div>
+
+  <!-- Панель управления разрешениями для администратора -->
+  <div id="adminSettingsPanel" class="settings-bar" style="display: none;">
+    <span>Клиентам разрешено ставить задачи:</span>
+    <label>
+      <input type="checkbox" id="allowClientCreateToggle" onchange="toggleClientPermissions(this.checked)" style="width: 18px; height: 18px; margin: 0;">
+      <b id="permissionText">Выкл</b>
+    </label>
+  </div>
+
+  <!-- Карточка добавления задачи -->
+  <div class="card" id="createTaskCard">
+    <div id="adminProjectSelect" style="display: none;">
+      <label><b>ID проекта (комната):</b></label>
+      <input type="text" id="projectInput" placeholder="Например: ivan или client1">
+    </div>
+
+    <label>Название задачи</label>
+    <input type="text" id="taskTitle" placeholder="Например: Согласование прототипа">
+    
+    <label>Дедлайн</label>
+    <input type="datetime-local" id="taskDeadline">
+
+    <button class="btn-primary" onclick="addTask()">Добавить задачу</button>
+  </div>
+
+  <!-- Фильтр проектов для администратора -->
+  <div id="filterContainer" style="display: none; margin-bottom: 12px;">
+    <label style="font-size: 12px; color: var(--hint);">Фильтр по проекту:</label>
+    <select id="projectFilter" onchange="filterTasks()">
+      <option value="ALL">Все проекты</option>
+    </select>
+  </div>
+
+  <div id="taskList"></div>
+
+  <script>
+    // =================================================================
+    // НАСТРОЙКИ:
+    const ADMIN_TELEGRAM_ID = 487609648; // <-- Ваш ID
+    const BOT_TOKEN = '8948920326:AAE0jFBqpVvegW1pi-UoVds89f5CTHzR4to'; // <-- Токен бота из @BotFather (для уведомлений)
+    const BOT_USERNAME = 'my_timer_tasks_bot'; // <-- Юзернейм бота
+    const APP_SHORT_NAME = 'app';
+    // =================================================================
+
+    const SUPABASE_URL = 'https://uogfyhdqtbwsmmrhmzhi.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZ2Z5aGRxdGJ3c21tcmhtemhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyNjI0OTAsImV4cCI6MjEwNTgzODQ5MH0.PNH24y2TEmxavaj4jhJKv-Ui5tBZb-qxVGbUGfXkwmg';
+
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    function getRoomIdentifier() {
+      if (tg?.initDataUnsafe?.start_param) return tg.initDataUnsafe.start_param;
+      if (tg?.initData) {
+        try {
+          const params = new URLSearchParams(tg.initData);
+          if (params.get('start_param')) return params.get('start_param');
+        } catch (e) {}
+      }
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('startapp')) return urlParams.get('startapp');
+      if (urlParams.get('room')) return urlParams.get('room');
+      if (window.location.hash) {
+        const hashMatch = window.location.hash.match(/tgWebAppStartParam=([^&]+)/);
+        if (hashMatch && hashMatch[1]) return decodeURIComponent(hashMatch[1]);
+      }
+      if (tg?.initDataUnsafe?.user?.id) return 'user_' + tg.initDataUnsafe.user.id;
+      return 'general';
+    }
+
+    const currentRoom = getRoomIdentifier();
+    const currentUserId = tg?.initDataUnsafe?.user?.id;
+    const currentUserName = tg?.initDataUnsafe?.user?.first_name || 'Участник';
+    const isAdmin = (Number(currentUserId) === Number(ADMIN_TELEGRAM_ID));
+
+    const roleBadge = document.getElementById('roleBadge');
+    if (isAdmin) {
+      roleBadge.textContent = '👑 Режим Администратора';
+      document.getElementById('adminProjectSelect').style.display = 'block';
+      document.getElementById('adminSettingsPanel').style.display = 'flex';
+      document.getElementById('filterContainer').style.display = 'block';
+      document.getElementById('projectInput').value = (currentRoom !== 'general' && !currentRoom.startsWith('user_')) ? currentRoom : 'client1';
+    } else {
+      roleBadge.textContent = `📁 Пространство: ${currentRoom}`;
+    }
+
+    let allTasks = [];
+
+    // Регистрация пользователя в проекте для пуш-уведомлений
+    async function registerMember() {
+      if (!currentUserId) return;
+      await client.from('project_members').upsert({
+        chat_id: currentRoom,
+        user_id: currentUserId,
+        user_name: currentUserName
+      }, { onConflict: 'chat_id, user_id' });
+    }
+
+    // Проверка настроек прав заказчика
+    async function checkPermissions() {
+      const { data } = await client.from('project_settings').select('*').eq('chat_id', currentRoom).single();
+      const allowCreate = data ? data.allow_client_create : false;
+
+      if (isAdmin) {
+        document.getElementById('allowClientCreateToggle').checked = allowCreate;
+        document.getElementById('permissionText').textContent = allowCreate ? 'Вкл' : 'Выкл';
+      } else {
+        // Если заказчик и создание выключено — скрываем форму
+        if (!allowCreate) {
+          document.getElementById('createTaskCard').style.display = 'none';
+        } else {
+          document.getElementById('createTaskCard').style.display = 'block';
+        }
+      }
+    }
+
+    async function toggleClientPermissions(enabled) {
+      document.getElementById('permissionText').textContent = enabled ? 'Вкл' : 'Выкл';
+      await client.from('project_settings').upsert({
+        chat_id: currentRoom,
+        allow_client_create: enabled
+      });
+    }
+
+    // Отправка уведомлений всем участникам проекта
+    async function sendPushNotification(messageText) {
+      try {
+        const { data: members } = await client.from('project_members').select('user_id').eq('chat_id', currentRoom);
+        if (!members || members.length === 0) return;
+
+        // Отправляем всем зарегистрированным участникам (включая админа, если он не в списке)
+        const recipientIds = Array.from(new Set([...members.map(m => m.user_id), ADMIN_TELEGRAM_ID]));
+
+        await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            botToken: BOT_TOKEN,
+            userIds: recipientIds,
+            message: messageText
+          })
+        });
+      } catch (e) {
+        console.error('Ошибка отправки уведомления:', e);
+      }
+    }
+
+    async function loadTasks() {
+      let query = client.from('group_tasks').select('*').order('id', { ascending: false });
+      if (!isAdmin) {
+        query = query.eq('chat_id', currentRoom);
+      }
+      const { data } = await query;
+      if (data) {
+        allTasks = data;
+        if (isAdmin) updateFilterDropdown();
+        renderTasks();
+      }
+    }
+
+    function updateFilterDropdown() {
+      const select = document.getElementById('projectFilter');
+      const currentSelected = select.value;
+      const projects = Array.from(new Set(allTasks.map(t => t.chat_id)));
+      select.innerHTML = '<option value="ALL">Все проекты</option>' + 
+        projects.map(p => `<option value="${p}">${p}</option>`).join('');
+      if (projects.includes(currentSelected)) select.value = currentSelected;
+    }
+
+    function filterTasks() { renderTasks(); }
+
+    async function addTask() {
+      const titleEl = document.getElementById('taskTitle');
+      const deadlineEl = document.getElementById('taskDeadline');
+      const projectInput = document.getElementById('projectInput');
+
+      if (!titleEl.value.trim() || !deadlineEl.value) {
+        alert('Заполните название и дедлайн');
+        return;
+      }
+
+      let targetRoom = currentRoom;
+      if (isAdmin) {
+        targetRoom = projectInput.value.trim() || 'general';
+      }
+
+      const newTask = {
+        chat_id: targetRoom,
+        title: titleEl.value.trim(),
+        deadline: new Date(deadlineEl.value).getTime(),
+        is_paused: false,
+        is_completed: false,
+        remaining_ms: null
+      };
+
+      const { data, error } = await client.from('group_tasks').insert([newTask]).select();
+      if (!error && data) {
+        allTasks.unshift(data[0]);
+        if (isAdmin) updateFilterDropdown();
+        renderTasks();
+
+        // Пуш-уведомление
+        sendPushNotification(`⚡ <b>Новая задача!</b>\nПроект: <code>${targetRoom}</code>\nЗадача: <b>${newTask.title}</b>\nАвтор: ${currentUserName}`);
+
+        titleEl.value = '';
+        deadlineEl.value = '';
+      }
+    }
+
+    async function togglePause(id) {
+      if (!isAdmin) return;
+      const task = allTasks.find(t => t.id === id);
+      if (!task) return;
+
+      const now = Date.now();
+      let updateData = {};
+
+      if (task.is_paused) {
+        const remaining = task.remaining_ms || 0;
+        updateData = { is_paused: false, deadline: now + remaining, remaining_ms: null };
+        sendPushNotification(`▶ <b>Задача возобновлена:</b> "${task.title}" (Проект: ${task.chat_id})`);
+      } else {
+        const remaining = Math.max(0, task.deadline - now);
+        updateData = { is_paused: true, remaining_ms: remaining };
+        sendPushNotification(`⏸ <b>Задача на паузе:</b> "${task.title}" (Проект: ${task.chat_id})`);
+      }
+
+      const { error } = await client.from('group_tasks').update(updateData).eq('id', id);
+      if (!error) {
+        Object.assign(task, updateData);
+        renderTasks();
+      }
+    }
+
+    async function toggleComplete(id) {
+      const task = allTasks.find(t => t.id === id);
+      if (!task) return;
+
+      const newStatus = !task.is_completed;
+      const { error } = await client.from('group_tasks').update({ is_completed: newStatus }).eq('id', id);
+      if (!error) {
+        task.is_completed = newStatus;
+        renderTasks();
+        if (newStatus) {
+          sendPushNotification(`✅ <b>Задача выполнена!</b>\nПроект: <code>${task.chat_id}</code>\nЗадача: <b>${task.title}</b>`);
+        }
+      }
+    }
+
+    async function deleteTask(id) {
+      const { error } = await client.from('group_tasks').delete().eq('id', id);
+      if (!error) {
+        allTasks = allTasks.filter(t => t.id !== id);
+        if (isAdmin) updateFilterDropdown();
+        renderTasks();
+      }
+    }
+
+    function formatTime(ms) {
+      if (ms <= 0) return "Дедлайн истек";
+      const totalSec = Math.floor(ms / 1000);
+      const d = Math.floor(totalSec / 86400);
+      const h = Math.floor((totalSec % 86400) / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      let str = "";
+      if (d > 0) str += `${d}д `;
+      return str + `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function copyLink(text, chipEl) {
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = chipEl.textContent;
+        chipEl.textContent = 'Скопировано!';
+        chipEl.style.background = '#22c55e';
+        chipEl.style.color = '#fff';
+        setTimeout(() => {
+          chipEl.textContent = orig;
+          chipEl.style.background = '#e2e8f0';
+          chipEl.style.color = '#334155';
+        }, 1500);
+      });
+    }
+
+    function renderTasks() {
+      const list = document.getElementById('taskList');
+      const filterVal = document.getElementById('projectFilter').value;
+      const now = Date.now();
+
+      let displayList = allTasks;
+      if (isAdmin && filterVal !== 'ALL') {
+        displayList = allTasks.filter(t => t.chat_id === filterVal);
+      }
+
+      if (displayList.length === 0) {
+        list.innerHTML = '<p style="text-align:center; color: var(--hint); padding: 15px;">Задач пока нет</p>';
+        return;
+      }
+
+      list.innerHTML = displayList.map(t => {
+        let statusClass = "status-active";
+        let timerText = "";
+
+        if (t.is_completed) {
+          statusClass = "status-completed";
+          timerText = "✓ Выполнено";
+        } else if (t.is_paused) {
+          statusClass = "status-paused";
+          timerText = `⏸ На паузе (${formatTime(t.remaining_ms || 0)})`;
+        } else {
+          const diff = t.deadline - now;
+          if (diff <= 0) {
+            statusClass = "status-expired";
+            timerText = "Срок истек!";
+          } else {
+            statusClass = "status-active";
+            timerText = formatTime(diff);
+          }
+        }
+
+        const projectLink = `https://t.me/${BOT_USERNAME}/${APP_SHORT_NAME}?startapp=${encodeURIComponent(t.chat_id)}`;
+
+        return `
+          <div class="task-item ${statusClass}" id="card-${t.id}">
+            <div class="task-header-row">
+              <div>
+                ${isAdmin ? `<div class="task-project-tag">📁 ${t.chat_id}</div>` : ''}
+                <div class="task-title">${t.title}</div>
+                <div class="task-timer" id="t-${t.id}">${timerText}</div>
+              </div>
+              <div class="task-actions">
+                <button class="btn-icon complete" title="Выполнено" onclick="toggleComplete(${t.id})">✓</button>
+                ${isAdmin && !t.is_completed ? `
+                  <button class="btn-icon" title="${t.is_paused ? 'Возобновить' : 'Пауза'}" onclick="togglePause(${t.id})">
+                    ${t.is_paused ? '▶' : '⏸'}
+                  </button>
+                ` : ''}
+                <button class="btn-icon delete" title="Удалить" onclick="deleteTask(${t.id})">✕</button>
+              </div>
+            </div>
+
+            ${isAdmin ? `
+              <div class="task-share-link">
+                <span>🔗 Ссылка: ${projectLink}</span>
+                <span class="copy-chip" onclick="copyLink('${projectLink}', this)">Скопировать</span>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    setInterval(() => {
+      const now = Date.now();
+      allTasks.forEach(t => {
+        if (t.is_paused || t.is_completed) return;
+        const el = document.getElementById(`t-${t.id}`);
+        const card = document.getElementById(`card-${t.id}`);
+        if (!el || !card) return;
+
+        const diff = t.deadline - now;
+        if (diff <= 0) {
+          if (!el.textContent.includes("Срок истек")) {
+            el.textContent = "Срок истек!";
+            card.className = "task-item status-expired";
+            // Однократное оповещение об истечении срока
+            if (!t._expiredNotified) {
+              t._expiredNotified = true;
+              sendPushNotification(`🚨 <b>Внимание! Истек срок задачи:</b>\nПроект: <code>${t.chat_id}</code>\nЗадача: <b>${t.title}</b>`);
+            }
+          }
+        } else {
+          el.textContent = formatTime(diff);
+        }
+      });
+    }, 1000);
+
+    // Подписка на обновления
+    client
+      .channel('app_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'group_tasks' }, () => loadTasks())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => checkPermissions())
+      .subscribe();
+
+    registerMember();
+    checkPermissions();
+    loadTasks();
+  </script>
+</body>
+</html>
