@@ -10,10 +10,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing required parameters' });
   }
 
-  const results = await Promise.all(
-    userIds.map(async (chatId) => {
+  const cleanIds = Array.from(new Set(userIds.map(id => Number(id)).filter(id => !isNaN(id) && id > 0)));
+
+  const deliveryReport = await Promise.all(
+    cleanIds.map(async (chatId) => {
       try {
-        const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        const resp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -22,12 +24,13 @@ export default async function handler(req, res) {
             parse_mode: 'HTML'
           })
         });
-        return response.json();
+        const result = await resp.json();
+        return { chatId, ok: result.ok, description: result.description || 'Delivered' };
       } catch (err) {
-        return { error: err.message };
+        return { chatId, ok: false, error: err.message };
       }
     })
   );
 
-  return res.status(200).json({ success: true, results });
+  return res.status(200).json({ success: true, report: deliveryReport });
 }
