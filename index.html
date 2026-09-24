@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Задачи проектов v3.1</title>
+  <title>Задачи проектов v3.2</title>
   
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -46,6 +46,28 @@
       background: #e0f2fe;
       color: #0369a1;
       margin-top: 4px;
+    }
+    .notice-box {
+      background: #fffbeb;
+      border: 1px solid #fef08a;
+      color: #854d0e;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-bottom: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .notice-box a {
+      background: #eab308;
+      color: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      text-decoration: none;
+      font-weight: 600;
+      white-space: nowrap;
+      margin-left: 8px;
     }
     .card {
       background: var(--card);
@@ -176,11 +198,17 @@
 <body>
 
   <div class="header">
-    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.1)</span></h1>
+    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.2)</span></h1>
     <span id="roleBadge" class="badge">Загрузка...</span>
   </div>
 
-  <!-- Панель управления разрешениями для администратора -->
+  <!-- Предупреждение для пользователя, если он еще не запустил бота в личке -->
+  <div id="startBotNotice" class="notice-box" style="display: none;">
+    <span>Включите уведомления, чтобы бот мог присылать вам статус задач</span>
+    <a id="botStartBtn" target="_blank">Включить</a>
+  </div>
+
+  <!-- Панель управления правами для админа -->
   <div id="adminSettingsPanel" class="settings-bar" style="display: none;">
     <span>Клиентам разрешено ставить задачи:</span>
     <label>
@@ -189,11 +217,11 @@
     </label>
   </div>
 
-  <!-- Карточка добавления задачи -->
+  <!-- Форма добавления задачи -->
   <div class="card" id="createTaskCard">
     <div id="adminProjectSelect" style="display: none;">
-      <label><b>ID проекта (комната):</b></label>
-      <input type="text" id="projectInput" placeholder="Например: ivan или client1">
+      <label><b>ID проекта (имя заказчика):</b></label>
+      <input type="text" id="projectInput" placeholder="Например: katya">
     </div>
 
     <label>Название задачи</label>
@@ -205,7 +233,7 @@
     <button class="btn-primary" onclick="addTask()">Добавить задачу</button>
   </div>
 
-  <!-- Фильтр проектов для администратора -->
+  <!-- Фильтр для админа -->
   <div id="filterContainer" style="display: none; margin-bottom: 12px;">
     <label style="font-size: 12px; color: var(--hint);">Фильтр по проекту:</label>
     <select id="projectFilter" onchange="filterTasks()">
@@ -217,10 +245,10 @@
 
   <script>
     // =================================================================
-    // НАСТРОЙКИ:
-    const ADMIN_TELEGRAM_ID = 487609648; // Ваш ID
-    const BOT_TOKEN = '8948920326:AAE0jFBqpVvegW1pi-UoVds89f5CTHzR4to'; // Токен бота
-    const BOT_USERNAME = 'my_timer_tasks_bot'; // Юзернейм бота
+    // ВАШИ НАСТРОЙКИ:
+    const ADMIN_TELEGRAM_ID = 487609648;
+    const BOT_TOKEN = '8948920326:AAE0jFBqpVvegW1pi-UoVds89f5CTHzR4to';
+    const BOT_USERNAME = 'my_timer_tasks_bot';
     const APP_SHORT_NAME = 'app';
     // =================================================================
 
@@ -234,29 +262,48 @@
       tg.expand();
     }
 
+    // Приведение имени комнаты к единому нижнему регистру без пробелов
+    function normalizeRoom(name) {
+      if (!name) return 'general';
+      return String(name).trim().toLowerCase();
+    }
+
     function getRoomIdentifier() {
-      if (tg?.initDataUnsafe?.start_param) return tg.initDataUnsafe.start_param;
-      if (tg?.initData) {
+      let raw = null;
+      if (tg?.initDataUnsafe?.start_param) raw = tg.initDataUnsafe.start_param;
+      if (!raw && tg?.initData) {
         try {
           const params = new URLSearchParams(tg.initData);
-          if (params.get('start_param')) return params.get('start_param');
+          if (params.get('start_param')) raw = params.get('start_param');
         } catch (e) {}
       }
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('startapp')) return urlParams.get('startapp');
-      if (urlParams.get('room')) return urlParams.get('room');
-      if (window.location.hash) {
-        const hashMatch = window.location.hash.match(/tgWebAppStartParam=([^&]+)/);
-        if (hashMatch && hashMatch[1]) return decodeURIComponent(hashMatch[1]);
+      if (!raw) {
+        const urlParams = new URLSearchParams(window.location.search);
+        raw = urlParams.get('startapp') || urlParams.get('room') || urlParams.get('start_param');
       }
-      if (tg?.initDataUnsafe?.user?.id) return 'user_' + tg.initDataUnsafe.user.id;
-      return 'general';
+      if (!raw && window.location.hash) {
+        const hashMatch = window.location.hash.match(/tgWebAppStartParam=([^&]+)/);
+        if (hashMatch && hashMatch[1]) raw = decodeURIComponent(hashMatch[1]);
+      }
+      if (!raw && tg?.initDataUnsafe?.user?.id) {
+        raw = 'user_' + tg.initDataUnsafe.user.id;
+      }
+
+      return normalizeRoom(raw || 'general');
     }
 
     const currentRoom = getRoomIdentifier();
-    const currentUserId = tg?.initDataUnsafe?.user?.id;
+    const currentUserId = tg?.initDataUnsafe?.user?.id ? Number(tg.initDataUnsafe.user.id) : null;
     const currentUserName = tg?.initDataUnsafe?.user?.first_name || 'Участник';
     const isAdmin = (Number(currentUserId) === Number(ADMIN_TELEGRAM_ID));
+
+    // Настройка баннера для активации бота
+    if (!isAdmin) {
+      const noticeBox = document.getElementById('startBotNotice');
+      const startBtn = document.getElementById('botStartBtn');
+      startBtn.href = `https://t.me/${BOT_USERNAME}?start=${currentRoom}`;
+      noticeBox.style.display = 'flex';
+    }
 
     const roleBadge = document.getElementById('roleBadge');
     if (isAdmin) {
@@ -264,24 +311,27 @@
       document.getElementById('adminProjectSelect').style.display = 'block';
       document.getElementById('adminSettingsPanel').style.display = 'flex';
       document.getElementById('filterContainer').style.display = 'block';
-      document.getElementById('projectInput').value = (currentRoom !== 'general' && !currentRoom.startsWith('user_')) ? currentRoom : 'client1';
+      document.getElementById('projectInput').value = (currentRoom !== 'general' && !currentRoom.startsWith('user_')) ? currentRoom : 'katya';
     } else {
       roleBadge.textContent = `📁 Пространство: ${currentRoom}`;
     }
 
     let allTasks = [];
 
-    // Регистрация участника для пушей
+    // Регистрация в базе подписчиков
     async function registerMember() {
       if (!currentUserId) return;
-      await client.from('project_members').upsert({
-        chat_id: currentRoom,
-        user_id: currentUserId,
-        user_name: currentUserName
-      }, { onConflict: 'chat_id, user_id' });
+      try {
+        await client.from('project_members').upsert({
+          chat_id: currentRoom,
+          user_id: currentUserId,
+          user_name: currentUserName
+        });
+      } catch (err) {
+        console.error('Ошибка регистрации участника:', err);
+      }
     }
 
-    // Проверка настроек прав заказчика
     async function checkPermissions() {
       const { data } = await client.from('project_settings').select('*').eq('chat_id', currentRoom).single();
       const allowCreate = data ? data.allow_client_create : false;
@@ -290,11 +340,7 @@
         document.getElementById('allowClientCreateToggle').checked = allowCreate;
         document.getElementById('permissionText').textContent = allowCreate ? 'Вкл' : 'Выкл';
       } else {
-        if (!allowCreate) {
-          document.getElementById('createTaskCard').style.display = 'none';
-        } else {
-          document.getElementById('createTaskCard').style.display = 'block';
-        }
+        document.getElementById('createTaskCard').style.display = allowCreate ? 'block' : 'none';
       }
     }
 
@@ -306,13 +352,22 @@
       });
     }
 
-    // Отправка сообщений ботом
-    async function sendPushNotification(messageText) {
+    // Надежная рассылка уведомлений
+    async function sendPushNotification(targetRoom, messageText) {
       try {
-        const { data: members } = await client.from('project_members').select('user_id').eq('chat_id', currentRoom);
-        if (!members || members.length === 0) return;
+        const normRoom = normalizeRoom(targetRoom);
+        const { data: members, error } = await client
+          .from('project_members')
+          .select('user_id')
+          .eq('chat_id', normRoom);
 
-        const recipientIds = Array.from(new Set([...members.map(m => m.user_id), ADMIN_TELEGRAM_ID]));
+        const idSet = new Set();
+        if (members && members.length > 0) {
+          members.forEach(m => idSet.add(Number(m.user_id)));
+        }
+        idSet.add(ADMIN_TELEGRAM_ID); // Админу отправляем всегда
+
+        const recipientIds = Array.from(idSet).filter(id => !isNaN(id) && id > 0);
 
         await fetch('/api/notify', {
           method: 'POST',
@@ -324,7 +379,7 @@
           })
         });
       } catch (e) {
-        console.error('Ошибка отправки уведомления:', e);
+        console.error('Сбой отправки уведомления:', e);
       }
     }
 
@@ -344,7 +399,7 @@
     function updateFilterDropdown() {
       const select = document.getElementById('projectFilter');
       const currentSelected = select.value;
-      const projects = Array.from(new Set(allTasks.map(t => t.chat_id)));
+      const projects = Array.from(new Set(allTasks.map(t => normalizeRoom(t.chat_id))));
       select.innerHTML = '<option value="ALL">Все проекты</option>' + 
         projects.map(p => `<option value="${p}">${p}</option>`).join('');
       if (projects.includes(currentSelected)) select.value = currentSelected;
@@ -362,10 +417,11 @@
         return;
       }
 
-      let targetRoom = currentRoom;
+      let rawTarget = currentRoom;
       if (isAdmin) {
-        targetRoom = projectInput.value.trim() || 'general';
+        rawTarget = projectInput.value.trim() || 'general';
       }
+      const targetRoom = normalizeRoom(rawTarget);
 
       const newTask = {
         chat_id: targetRoom,
@@ -382,7 +438,7 @@
         if (isAdmin) updateFilterDropdown();
         renderTasks();
 
-        sendPushNotification(`⚡ <b>Новая задача!</b>\nПроект: <code>${targetRoom}</code>\nЗадача: <b>${newTask.title}</b>\nАвтор: ${currentUserName}`);
+        sendPushNotification(targetRoom, `⚡ <b>Новая задача!</b>\nПроект: <code>${targetRoom}</code>\nЗадача: <b>${newTask.title}</b>\nАвтор: ${currentUserName}`);
 
         titleEl.value = '';
         deadlineEl.value = '';
@@ -396,15 +452,16 @@
 
       const now = Date.now();
       let updateData = {};
+      const targetRoom = normalizeRoom(task.chat_id);
 
       if (task.is_paused) {
         const remaining = task.remaining_ms || 0;
         updateData = { is_paused: false, deadline: now + remaining, remaining_ms: null };
-        sendPushNotification(`▶ <b>Задача возобновлена:</b> "${task.title}" (Проект: ${task.chat_id})`);
+        sendPushNotification(targetRoom, `▶ <b>Задача возобновлена:</b> "${task.title}" (Проект: ${targetRoom})`);
       } else {
         const remaining = Math.max(0, task.deadline - now);
         updateData = { is_paused: true, remaining_ms: remaining };
-        sendPushNotification(`⏸ <b>Задача на паузе:</b> "${task.title}" (Проект: ${task.chat_id})`);
+        sendPushNotification(targetRoom, `⏸ <b>Задача на паузе:</b> "${task.title}" (Проект: ${targetRoom})`);
       }
 
       const { error } = await client.from('group_tasks').update(updateData).eq('id', id);
@@ -415,23 +472,24 @@
     }
 
     async function toggleComplete(id) {
-      if (!isAdmin) return; // Заказчик не может менять статус
+      if (!isAdmin) return;
       const task = allTasks.find(t => t.id === id);
       if (!task) return;
 
+      const targetRoom = normalizeRoom(task.chat_id);
       const newStatus = !task.is_completed;
       const { error } = await client.from('group_tasks').update({ is_completed: newStatus }).eq('id', id);
       if (!error) {
         task.is_completed = newStatus;
         renderTasks();
         if (newStatus) {
-          sendPushNotification(`✅ <b>Задача выполнена!</b>\nПроект: <code>${task.chat_id}</code>\nЗадача: <b>${task.title}</b>`);
+          sendPushNotification(targetRoom, `✅ <b>Задача выполнена!</b>\nПроект: <code>${targetRoom}</code>\nЗадача: <b>${task.title}</b>`);
         }
       }
     }
 
     async function deleteTask(id) {
-      if (!isAdmin) return; // Заказчик не может удалять задачи
+      if (!isAdmin) return;
       const { error } = await client.from('group_tasks').delete().eq('id', id);
       if (!error) {
         allTasks = allTasks.filter(t => t.id !== id);
@@ -473,7 +531,7 @@
 
       let displayList = allTasks;
       if (isAdmin && filterVal !== 'ALL') {
-        displayList = allTasks.filter(t => t.chat_id === filterVal);
+        displayList = allTasks.filter(t => normalizeRoom(t.chat_id) === filterVal);
       }
 
       if (displayList.length === 0) {
@@ -484,6 +542,7 @@
       list.innerHTML = displayList.map(t => {
         let statusClass = "status-active";
         let timerText = "";
+        const roomName = normalizeRoom(t.chat_id);
 
         if (t.is_completed) {
           statusClass = "status-completed";
@@ -502,18 +561,17 @@
           }
         }
 
-        const projectLink = `https://t.me/${BOT_USERNAME}/${APP_SHORT_NAME}?startapp=${encodeURIComponent(t.chat_id)}`;
+        const projectLink = `https://t.me/${BOT_USERNAME}/${APP_SHORT_NAME}?startapp=${encodeURIComponent(roomName)}`;
 
         return `
           <div class="task-item ${statusClass}" id="card-${t.id}">
             <div class="task-header-row">
               <div>
-                ${isAdmin ? `<div class="task-project-tag">📁 ${t.chat_id}</div>` : ''}
+                ${isAdmin ? `<div class="task-project-tag">📁 ${roomName}</div>` : ''}
                 <div class="task-title">${t.title}</div>
                 <div class="task-timer" id="t-${t.id}">${timerText}</div>
               </div>
 
-              <!-- КНОПКИ УПРАВЛЕНИЯ: видны ТОЛЬКО администратору -->
               ${isAdmin ? `
                 <div class="task-actions">
                   <button class="btn-icon complete" title="Выполнено" onclick="toggleComplete(${t.id})">✓</button>
@@ -553,7 +611,7 @@
             card.className = "task-item status-expired";
             if (!t._expiredNotified) {
               t._expiredNotified = true;
-              sendPushNotification(`🚨 <b>Внимание! Истек срок задачи:</b>\nПроект: <code>${t.chat_id}</code>\nЗадача: <b>${t.title}</b>`);
+              sendPushNotification(t.chat_id, `🚨 <b>Внимание! Истек срок задачи:</b>\nПроект: <code>${normalizeRoom(t.chat_id)}</code>\nЗадача: <b>${t.title}</b>`);
             }
           }
         } else {
@@ -562,11 +620,11 @@
       });
     }, 1000);
 
-    // Подписка на обновления
     client
       .channel('app_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_tasks' }, () => loadTasks())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => checkPermissions())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'project_members' }, () => {})
       .subscribe();
 
     registerMember();
