@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Задачи проектов v3.0</title>
+  <title>Задачи проектов v3.1</title>
   
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -176,7 +176,7 @@
 <body>
 
   <div class="header">
-    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.0)</span></h1>
+    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.1)</span></h1>
     <span id="roleBadge" class="badge">Загрузка...</span>
   </div>
 
@@ -218,9 +218,9 @@
   <script>
     // =================================================================
     // НАСТРОЙКИ:
-    const ADMIN_TELEGRAM_ID = 487609648; // <-- Ваш ID
-    const BOT_TOKEN = '8948920326:AAE0jFBqpVvegW1pi-UoVds89f5CTHzR4to'; // <-- Токен бота из @BotFather (для уведомлений)
-    const BOT_USERNAME = 'my_timer_tasks_bot'; // <-- Юзернейм бота
+    const ADMIN_TELEGRAM_ID = 487609648; // Ваш ID
+    const BOT_TOKEN = '8948920326:AAE0jFBqpVvegW1pi-UoVds89f5CTHzR4to'; // Токен бота
+    const BOT_USERNAME = 'my_timer_tasks_bot'; // Юзернейм бота
     const APP_SHORT_NAME = 'app';
     // =================================================================
 
@@ -271,7 +271,7 @@
 
     let allTasks = [];
 
-    // Регистрация пользователя в проекте для пуш-уведомлений
+    // Регистрация участника для пушей
     async function registerMember() {
       if (!currentUserId) return;
       await client.from('project_members').upsert({
@@ -290,7 +290,6 @@
         document.getElementById('allowClientCreateToggle').checked = allowCreate;
         document.getElementById('permissionText').textContent = allowCreate ? 'Вкл' : 'Выкл';
       } else {
-        // Если заказчик и создание выключено — скрываем форму
         if (!allowCreate) {
           document.getElementById('createTaskCard').style.display = 'none';
         } else {
@@ -307,13 +306,12 @@
       });
     }
 
-    // Отправка уведомлений всем участникам проекта
+    // Отправка сообщений ботом
     async function sendPushNotification(messageText) {
       try {
         const { data: members } = await client.from('project_members').select('user_id').eq('chat_id', currentRoom);
         if (!members || members.length === 0) return;
 
-        // Отправляем всем зарегистрированным участникам (включая админа, если он не в списке)
         const recipientIds = Array.from(new Set([...members.map(m => m.user_id), ADMIN_TELEGRAM_ID]));
 
         await fetch('/api/notify', {
@@ -384,7 +382,6 @@
         if (isAdmin) updateFilterDropdown();
         renderTasks();
 
-        // Пуш-уведомление
         sendPushNotification(`⚡ <b>Новая задача!</b>\nПроект: <code>${targetRoom}</code>\nЗадача: <b>${newTask.title}</b>\nАвтор: ${currentUserName}`);
 
         titleEl.value = '';
@@ -418,6 +415,7 @@
     }
 
     async function toggleComplete(id) {
+      if (!isAdmin) return; // Заказчик не может менять статус
       const task = allTasks.find(t => t.id === id);
       if (!task) return;
 
@@ -433,6 +431,7 @@
     }
 
     async function deleteTask(id) {
+      if (!isAdmin) return; // Заказчик не может удалять задачи
       const { error } = await client.from('group_tasks').delete().eq('id', id);
       if (!error) {
         allTasks = allTasks.filter(t => t.id !== id);
@@ -513,15 +512,19 @@
                 <div class="task-title">${t.title}</div>
                 <div class="task-timer" id="t-${t.id}">${timerText}</div>
               </div>
-              <div class="task-actions">
-                <button class="btn-icon complete" title="Выполнено" onclick="toggleComplete(${t.id})">✓</button>
-                ${isAdmin && !t.is_completed ? `
-                  <button class="btn-icon" title="${t.is_paused ? 'Возобновить' : 'Пауза'}" onclick="togglePause(${t.id})">
-                    ${t.is_paused ? '▶' : '⏸'}
-                  </button>
-                ` : ''}
-                <button class="btn-icon delete" title="Удалить" onclick="deleteTask(${t.id})">✕</button>
-              </div>
+
+              <!-- КНОПКИ УПРАВЛЕНИЯ: видны ТОЛЬКО администратору -->
+              ${isAdmin ? `
+                <div class="task-actions">
+                  <button class="btn-icon complete" title="Выполнено" onclick="toggleComplete(${t.id})">✓</button>
+                  ${!t.is_completed ? `
+                    <button class="btn-icon" title="${t.is_paused ? 'Возобновить' : 'Пауза'}" onclick="togglePause(${t.id})">
+                      ${t.is_paused ? '▶' : '⏸'}
+                    </button>
+                  ` : ''}
+                  <button class="btn-icon delete" title="Удалить" onclick="deleteTask(${t.id})">✕</button>
+                </div>
+              ` : ''}
             </div>
 
             ${isAdmin ? `
@@ -548,7 +551,6 @@
           if (!el.textContent.includes("Срок истек")) {
             el.textContent = "Срок истек!";
             card.className = "task-item status-expired";
-            // Однократное оповещение об истечении срока
             if (!t._expiredNotified) {
               t._expiredNotified = true;
               sendPushNotification(`🚨 <b>Внимание! Истек срок задачи:</b>\nПроект: <code>${t.chat_id}</code>\nЗадача: <b>${t.title}</b>`);
