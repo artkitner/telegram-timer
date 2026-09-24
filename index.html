@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Задачи проектов v3.3</title>
+  <title>Задачи проектов v3.4</title>
   
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -199,17 +199,15 @@
 <body>
 
   <div class="header">
-    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.3)</span></h1>
+    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.4)</span></h1>
     <span id="roleBadge" class="badge">Загрузка...</span>
   </div>
 
-  <!-- Плашка согласия на пуши -->
   <div id="startBotNotice" class="notice-box" style="display: none;">
     <span>Включите уведомления, чтобы бот мог присылать вам статус задач</span>
     <a id="botStartBtn" onclick="enableNotifications()">Включить</a>
   </div>
 
-  <!-- Панель управления разрешениями для администратора -->
   <div id="adminSettingsPanel" class="settings-bar" style="display: none;">
     <span>Клиентам разрешено ставить задачи:</span>
     <label>
@@ -218,7 +216,6 @@
     </label>
   </div>
 
-  <!-- Карточка добавления задачи -->
   <div class="card" id="createTaskCard">
     <div id="adminProjectSelect" style="display: none;">
       <label><b>ID проекта (комната):</b></label>
@@ -234,7 +231,6 @@
     <button class="btn-primary" onclick="addTask()">Добавить задачу</button>
   </div>
 
-  <!-- Фильтр проектов для администратора -->
   <div id="filterContainer" style="display: none; margin-bottom: 12px;">
     <label style="font-size: 12px; color: var(--hint);">Фильтр по проекту:</label>
     <select id="projectFilter" onchange="filterTasks()">
@@ -268,7 +264,6 @@
       return String(name).trim().toLowerCase();
     }
 
-    // Извлечение параметра напрямую из ссылки
     function getExplicitRoomFromUrl() {
       let raw = null;
       if (tg?.initDataUnsafe?.start_param) raw = tg.initDataUnsafe.start_param;
@@ -295,7 +290,6 @@
 
     let currentRoom = getExplicitRoomFromUrl();
 
-    // Если заказчик открыл без параметра (из меню бота), достаем его сохраненный проект
     if (!currentRoom && !isAdmin) {
       currentRoom = localStorage.getItem('last_project_room') || '';
     }
@@ -317,12 +311,11 @@
     updateHeaderUI();
 
     let allTasks = [];
+    const notifiedExpiredTasks = new Set(); // Чтобы уведомление об истечении срока не дублировалось
 
-    // Привязка пользователя к проекту и восстановление комнаты из БД
     async function resolveUserProject() {
       if (!currentUserId) return;
 
-      // Если комната передана явно в ссылке — сохраняем её для заказчика
       if (currentRoom) {
         localStorage.setItem('last_project_room', currentRoom);
         await client.from('project_members').upsert({
@@ -331,7 +324,6 @@
           user_name: currentUserName
         });
       } else if (!isAdmin) {
-        // Если параметра не было — ищем последний проект заказчика в базе
         const { data } = await client
           .from('project_members')
           .select('chat_id, notifications_enabled')
@@ -349,7 +341,6 @@
         }
       }
 
-      // Проверка плашки уведомлений
       if (!isAdmin) {
         const { data: member } = await client
           .from('project_members')
@@ -366,7 +357,6 @@
       }
     }
 
-    // Клик по кнопке «Включить»
     async function enableNotifications() {
       document.getElementById('startBotNotice').style.display = 'none';
       if (currentUserId && currentRoom) {
@@ -376,7 +366,6 @@
           notifications_enabled: true
         });
       }
-      // Открываем диалог с ботом для старта
       if (tg?.openTelegramLink) {
         tg.openTelegramLink(`https://t.me/${BOT_USERNAME}?start=${currentRoom}`);
       } else {
@@ -405,6 +394,7 @@
       });
     }
 
+    // Рассылка push-сообщений
     async function sendPushNotification(targetRoom, messageText) {
       try {
         const normRoom = normalizeRoom(targetRoom);
@@ -540,13 +530,23 @@
       }
     }
 
+    // Удаление задачи с обязательным push-уведомлением
     async function deleteTask(id) {
       if (!isAdmin) return;
+      const task = allTasks.find(t => t.id === id);
+      if (!task) return;
+
+      const targetRoom = normalizeRoom(task.chat_id);
+      const taskTitle = task.title;
+
       const { error } = await client.from('group_tasks').delete().eq('id', id);
       if (!error) {
         allTasks = allTasks.filter(t => t.id !== id);
         if (isAdmin) updateFilterDropdown();
         renderTasks();
+
+        // Уведомление об удалении
+        sendPushNotification(targetRoom, `🗑 <b>Задача удалена:</b>\nПроект: <code>${targetRoom}</code>\nЗадача: <b>${taskTitle}</b>`);
       }
     }
 
@@ -648,6 +648,7 @@
       }).join('');
     }
 
+    // Ежесекундный тик таймера и фиксация истечения срока
     setInterval(() => {
       const now = Date.now();
       allTasks.forEach(t => {
@@ -658,13 +659,14 @@
 
         const diff = t.deadline - now;
         if (diff <= 0) {
-          if (!el.textContent.includes("Срок истек")) {
-            el.textContent = "Срок истек!";
-            card.className = "task-item status-expired";
-            if (!t._expiredNotified) {
-              t._expiredNotified = true;
-              sendPushNotification(t.chat_id, `🚨 <b>Внимание! Истек срок задачи:</b>\nПроект: <code>${normalizeRoom(t.chat_id)}</code>\nЗадача: <b>${t.title}</b>`);
-            }
+          el.textContent = "Срок истек!";
+          card.className = "task-item status-expired";
+
+          // Гарантированная отправка уведомления ровно 1 раз
+          if (!notifiedExpiredTasks.has(t.id)) {
+            notifiedExpiredTasks.add(t.id);
+            const targetRoom = normalizeRoom(t.chat_id);
+            sendPushNotification(targetRoom, `🚨 <b>Внимание! Истек срок задачи:</b>\nПроект: <code>${targetRoom}</code>\nЗадача: <b>${t.title}</b>`);
           }
         } else {
           el.textContent = formatTime(diff);
@@ -678,7 +680,6 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => checkPermissions())
       .subscribe();
 
-    // Запуск инициализации с автоопределением комнаты
     resolveUserProject().then(() => {
       checkPermissions();
       loadTasks();
