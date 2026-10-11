@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Задачи проектов v3.4</title>
+  <title>Задачи проектов v3.5</title>
   
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -199,7 +199,7 @@
 <body>
 
   <div class="header">
-    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.4)</span></h1>
+    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v3.5)</span></h1>
     <span id="roleBadge" class="badge">Загрузка...</span>
   </div>
 
@@ -208,8 +208,9 @@
     <a id="botStartBtn" onclick="enableNotifications()">Включить</a>
   </div>
 
+  <!-- Панель управления разрешениями для администратора -->
   <div id="adminSettingsPanel" class="settings-bar" style="display: none;">
-    <span>Клиентам разрешено ставить задачи:</span>
+    <span id="settingsTargetProjectLabel">Разрешить клиентам ставить задачи:</span>
     <label>
       <input type="checkbox" id="allowClientCreateToggle" onchange="toggleClientPermissions(this.checked)" style="width: 18px; height: 18px; margin: 0;">
       <b id="permissionText">Выкл</b>
@@ -219,7 +220,7 @@
   <div class="card" id="createTaskCard">
     <div id="adminProjectSelect" style="display: none;">
       <label><b>ID проекта (комната):</b></label>
-      <input type="text" id="projectInput" placeholder="Например: katya">
+      <input type="text" id="projectInput" placeholder="Например: katya" oninput="onAdminProjectInputChange()">
     </div>
 
     <label>Название задачи</label>
@@ -241,13 +242,10 @@
   <div id="taskList"></div>
 
   <script>
-    // =================================================================
-    // НАСТРОЙКИ:
     const ADMIN_TELEGRAM_ID = 487609648;
     const BOT_TOKEN = '8948920326:AAE0jFBqpVvegW1pi-UoVds89f5CTHzR4to';
     const BOT_USERNAME = 'my_timer_tasks_bot';
     const APP_SHORT_NAME = 'app';
-    // =================================================================
 
     const SUPABASE_URL = 'https://uogfyhdqtbwsmmrhmzhi.supabase.co';
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvZ2Z5aGRxdGJ3c21tcmhtemhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAyNjI0OTAsImV4cCI6MjEwNTgzODQ5MH0.PNH24y2TEmxavaj4jhJKv-Ui5tBZb-qxVGbUGfXkwmg';
@@ -302,7 +300,9 @@
         document.getElementById('adminProjectSelect').style.display = 'block';
         document.getElementById('adminSettingsPanel').style.display = 'flex';
         document.getElementById('filterContainer').style.display = 'block';
-        document.getElementById('projectInput').value = (currentRoom && currentRoom !== 'general') ? currentRoom : 'katya';
+        if (!document.getElementById('projectInput').value) {
+          document.getElementById('projectInput').value = (currentRoom && currentRoom !== 'general') ? currentRoom : 'katya';
+        }
       } else {
         roleBadge.textContent = `📁 Проект: ${currentRoom || 'Загрузка...'}`;
       }
@@ -311,7 +311,14 @@
     updateHeaderUI();
 
     let allTasks = [];
-    const notifiedExpiredTasks = new Set(); // Чтобы уведомление об истечении срока не дублировалось
+    const notifiedExpiredTasks = new Set();
+
+    // Получить проект, для которого прямо сейчас настраиваются права в панели админа
+    function getAdminConfiguringRoom() {
+      const inputEl = document.getElementById('projectInput');
+      const val = inputEl ? normalizeRoom(inputEl.value) : '';
+      return val || normalizeRoom(currentRoom) || 'katya';
+    }
 
     async function resolveUserProject() {
       if (!currentUserId) return;
@@ -322,7 +329,7 @@
           chat_id: currentRoom,
           user_id: currentUserId,
           user_name: currentUserName
-        });
+        }, { onConflict: 'chat_id, user_id' });
       } else if (!isAdmin) {
         const { data } = await client
           .from('project_members')
@@ -364,7 +371,7 @@
           chat_id: currentRoom,
           user_id: currentUserId,
           notifications_enabled: true
-        });
+        }, { onConflict: 'chat_id, user_id' });
       }
       if (tg?.openTelegramLink) {
         tg.openTelegramLink(`https://t.me/${BOT_USERNAME}?start=${currentRoom}`);
@@ -373,12 +380,21 @@
       }
     }
 
+    // Проверка настроек прав
     async function checkPermissions() {
-      if (!currentRoom) return;
-      const { data } = await client.from('project_settings').select('*').eq('chat_id', currentRoom).single();
-      const allowCreate = data ? data.allow_client_create : false;
+      const targetRoom = isAdmin ? getAdminConfiguringRoom() : currentRoom;
+      if (!targetRoom) return;
+
+      const { data } = await client
+        .from('project_settings')
+        .select('*')
+        .eq('chat_id', targetRoom)
+        .maybeSingle();
+
+      const allowCreate = data ? !!data.allow_client_create : false;
 
       if (isAdmin) {
+        document.getElementById('settingsTargetProjectLabel').textContent = `Клиентам проекта [${targetRoom}] разрешено ставить задачи:`;
         document.getElementById('allowClientCreateToggle').checked = allowCreate;
         document.getElementById('permissionText').textContent = allowCreate ? 'Вкл' : 'Выкл';
       } else {
@@ -386,15 +402,34 @@
       }
     }
 
+    // Переключение разрешения администратором
     async function toggleClientPermissions(enabled) {
+      if (!isAdmin) return;
+      const targetRoom = getAdminConfiguringRoom();
+      
       document.getElementById('permissionText').textContent = enabled ? 'Вкл' : 'Выкл';
-      await client.from('project_settings').upsert({
-        chat_id: currentRoom,
+
+      const { error } = await client.from('project_settings').upsert({
+        chat_id: targetRoom,
         allow_client_create: enabled
-      });
+      }, { onConflict: 'chat_id' });
+
+      if (error) {
+        alert('Ошибка сохранения настройки: ' + error.message);
+        document.getElementById('allowClientCreateToggle').checked = !enabled;
+        document.getElementById('permissionText').textContent = !enabled ? 'Вкл' : 'Выкл';
+      }
     }
 
-    // Рассылка push-сообщений
+    // Обработчик изменения имени проекта в поле ввода админа
+    let typingTimer;
+    function onAdminProjectInputChange() {
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(() => {
+        checkPermissions();
+      }, 400);
+    }
+
     async function sendPushNotification(targetRoom, messageText) {
       try {
         const normRoom = normalizeRoom(targetRoom);
@@ -447,7 +482,14 @@
       if (projects.includes(currentSelected)) select.value = currentSelected;
     }
 
-    function filterTasks() { renderTasks(); }
+    function filterTasks() {
+      const filterVal = document.getElementById('projectFilter').value;
+      if (isAdmin && filterVal !== 'ALL') {
+        document.getElementById('projectInput').value = filterVal;
+        checkPermissions();
+      }
+      renderTasks();
+    }
 
     async function addTask() {
       const titleEl = document.getElementById('taskTitle');
@@ -461,7 +503,7 @@
 
       let rawTarget = currentRoom;
       if (isAdmin) {
-        rawTarget = projectInput.value.trim() || 'general';
+        rawTarget = projectInput.value.trim() || 'katya';
       }
       const targetRoom = normalizeRoom(rawTarget);
 
@@ -530,7 +572,6 @@
       }
     }
 
-    // Удаление задачи с обязательным push-уведомлением
     async function deleteTask(id) {
       if (!isAdmin) return;
       const task = allTasks.find(t => t.id === id);
@@ -545,7 +586,6 @@
         if (isAdmin) updateFilterDropdown();
         renderTasks();
 
-        // Уведомление об удалении
         sendPushNotification(targetRoom, `🗑 <b>Задача удалена:</b>\nПроект: <code>${targetRoom}</code>\nЗадача: <b>${taskTitle}</b>`);
       }
     }
@@ -648,7 +688,6 @@
       }).join('');
     }
 
-    // Ежесекундный тик таймера и фиксация истечения срока
     setInterval(() => {
       const now = Date.now();
       allTasks.forEach(t => {
@@ -662,7 +701,6 @@
           el.textContent = "Срок истек!";
           card.className = "task-item status-expired";
 
-          // Гарантированная отправка уведомления ровно 1 раз
           if (!notifiedExpiredTasks.has(t.id)) {
             notifiedExpiredTasks.add(t.id);
             const targetRoom = normalizeRoom(t.chat_id);
@@ -674,8 +712,9 @@
       });
     }, 1000);
 
+    // Подписка на изменения в реальном времени
     client
-      .channel('app_realtime')
+      .channel('app_realtime_v35')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'group_tasks' }, () => loadTasks())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'project_settings' }, () => checkPermissions())
       .subscribe();
