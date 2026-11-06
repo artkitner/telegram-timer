@@ -4,32 +4,64 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <title>Задачи проектов v4.0 (Firebase)</title>
+  <title>Задачи проектов v4.1</title>
   
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   
-  <!-- Подключаем Firebase SDK -->
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
   <style>
     :root {
+      /* Базовые цвета с фолбэком на светлую тему */
       --bg: var(--tg-theme-bg-color, #f4f4f5);
       --card: var(--tg-theme-secondary-bg-color, #ffffff);
       --text: var(--tg-theme-text-color, #18181b);
       --hint: var(--tg-theme-hint-color, #71717a);
       --btn: var(--tg-theme-button-color, #2563eb);
       --btn-text: var(--tg-theme-button-text-color, #ffffff);
+      --input-bg: var(--tg-theme-bg-color, #ffffff);
+      --input-border: rgba(0, 0, 0, 0.12);
+      --bar-bg: rgba(0, 0, 0, 0.04);
+      --border-color: rgba(0, 0, 0, 0.08);
 
+      /* Статусы для светлой темы */
       --active-border: #22c55e;
-      --active-bg: #f0fdf4;
+      --active-bg: rgba(34, 197, 94, 0.08);
+      --active-timer: #15803d;
+
       --paused-border: #eab308;
-      --paused-bg: #fefce8;
+      --paused-bg: rgba(234, 179, 8, 0.1);
+      --paused-timer: #b45309;
+
       --expired-border: #ef4444;
-      --expired-bg: #fef2f2;
-      --completed-border: #64748b;
-      --completed-bg: #f8fafc;
+      --expired-bg: rgba(239, 68, 68, 0.1);
+      --expired-timer: #dc2626;
+
+      --completed-border: #71717a;
+      --completed-bg: rgba(113, 113, 122, 0.06);
+      --completed-timer: var(--hint);
     }
+
+    /* Адаптация под темную тему Telegram */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --input-border: rgba(255, 255, 255, 0.15);
+        --bar-bg: rgba(255, 255, 255, 0.06);
+        --border-color: rgba(255, 255, 255, 0.1);
+
+        --active-bg: rgba(34, 197, 94, 0.15);
+        --active-timer: #4ade80;
+
+        --paused-bg: rgba(234, 179, 8, 0.15);
+        --paused-timer: #facc15;
+
+        --expired-bg: rgba(239, 68, 68, 0.15);
+        --expired-timer: #f87171;
+      }
+    }
+
     body {
       margin: 0;
       padding: 16px;
@@ -37,23 +69,26 @@
       background: var(--bg);
       color: var(--text);
       box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
     }
     .header { margin-bottom: 12px; }
-    h1 { font-size: 20px; margin: 0 0 4px 0; }
+    h1 { font-size: 20px; margin: 0 0 4px 0; color: var(--text); }
+    
     .badge {
       display: inline-block;
       font-size: 12px;
       font-weight: 600;
       padding: 3px 8px;
       border-radius: 6px;
-      background: #e0f2fe;
-      color: #0369a1;
+      background: rgba(37, 99, 235, 0.15);
+      color: var(--btn);
       margin-top: 4px;
     }
+
     .notice-box {
-      background: #fffbeb;
-      border: 1px solid #fef08a;
-      color: #854d0e;
+      background: rgba(234, 179, 8, 0.15);
+      border: 1px solid rgba(234, 179, 8, 0.3);
+      color: var(--text);
       padding: 10px 12px;
       border-radius: 8px;
       font-size: 12px;
@@ -64,7 +99,7 @@
     }
     .notice-box a {
       background: #eab308;
-      color: #fff;
+      color: #000;
       padding: 5px 10px;
       border-radius: 6px;
       text-decoration: none;
@@ -73,22 +108,27 @@
       margin-left: 8px;
       cursor: pointer;
     }
+
     .card {
       background: var(--card);
       padding: 16px;
       border-radius: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
       margin-bottom: 16px;
+      border: 1px solid var(--border-color);
     }
+
     .settings-bar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: #f1f5f9;
+      background: var(--bar-bg);
       padding: 10px 12px;
       border-radius: 8px;
       margin-bottom: 14px;
       font-size: 13px;
+      color: var(--text);
+      border: 1px solid var(--border-color);
     }
     .settings-bar label {
       display: flex;
@@ -96,23 +136,38 @@
       gap: 8px;
       cursor: pointer;
     }
+
+    label {
+      font-size: 13px;
+      color: var(--hint);
+      display: block;
+      margin-top: 8px;
+    }
+
     input, select, button {
       width: 100%;
       padding: 12px;
       margin-top: 6px;
       margin-bottom: 12px;
       border-radius: 8px;
-      border: 1px solid rgba(0,0,0,0.15);
+      border: 1px solid var(--input-border);
       box-sizing: border-box;
       font-size: 15px;
-      background: #fff;
+      background: var(--input-bg);
+      color: var(--text);
+      outline: none;
     }
+    input:focus, select:focus {
+      border-color: var(--btn);
+    }
+
     button.btn-primary {
       background: var(--btn);
       color: var(--btn-text);
       border: none;
       font-weight: 600;
       cursor: pointer;
+      margin-top: 4px;
     }
 
     .task-item {
@@ -120,23 +175,25 @@
       border-radius: 12px;
       padding: 14px;
       margin-bottom: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-      border-left: 6px solid #d4d4d8;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      border: 1px solid var(--border-color);
+      border-left: 6px solid var(--hint);
+      transition: background 0.2s ease, border-color 0.2s ease;
     }
     .task-item.status-active { border-left-color: var(--active-border); background: var(--active-bg); }
     .task-item.status-paused { border-left-color: var(--paused-border); background: var(--paused-bg); }
     .task-item.status-expired { border-left-color: var(--expired-border); background: var(--expired-bg); }
-    .task-item.status-completed { border-left-color: var(--completed-border); background: var(--completed-bg); opacity: 0.75; }
+    .task-item.status-completed { border-left-color: var(--completed-border); background: var(--completed-bg); opacity: 0.7; }
 
     .task-header-row {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
     }
-    .task-title { font-weight: 600; font-size: 16px; margin-bottom: 4px; }
+    .task-title { font-weight: 600; font-size: 16px; margin-bottom: 4px; color: var(--text); }
     .task-project-tag {
       font-size: 11px;
-      color: #0369a1;
+      color: var(--btn);
       font-weight: bold;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -148,10 +205,10 @@
       font-weight: bold;
       margin-top: 4px;
     }
-    .status-active .task-timer { color: #15803d; }
-    .status-paused .task-timer { color: #a16207; }
-    .status-expired .task-timer { color: #b91c1c; }
-    .status-completed .task-timer { color: #475569; text-decoration: line-through; }
+    .status-active .task-timer { color: var(--active-timer); }
+    .status-paused .task-timer { color: var(--paused-timer); }
+    .status-expired .task-timer { color: var(--expired-timer); }
+    .status-completed .task-timer { color: var(--completed-timer); text-decoration: line-through; }
 
     .task-actions {
       display: flex;
@@ -159,8 +216,9 @@
       gap: 6px;
     }
     .btn-icon {
-      background: #fff;
-      border: 1px solid rgba(0,0,0,0.1);
+      background: var(--card);
+      border: 1px solid var(--input-border);
+      color: var(--text);
       border-radius: 6px;
       width: 32px;
       height: 32px;
@@ -172,13 +230,13 @@
       cursor: pointer;
       font-size: 14px;
     }
-    .btn-icon.complete { color: #16a34a; border-color: rgba(22,163,74,0.3); }
-    .btn-icon.delete { color: #ef4444; border-color: rgba(239,68,68,0.3); }
+    .btn-icon.complete { color: #22c55e; border-color: rgba(34, 197, 94, 0.4); }
+    .btn-icon.delete { color: #ef4444; border-color: rgba(239, 68, 68, 0.4); }
 
     .task-share-link {
       margin-top: 10px;
       padding-top: 8px;
-      border-top: 1px dashed rgba(0,0,0,0.1);
+      border-top: 1px dashed var(--border-color);
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -187,8 +245,9 @@
       word-break: break-all;
     }
     .copy-chip {
-      background: #e2e8f0;
-      color: #334155;
+      background: var(--bar-bg);
+      color: var(--text);
+      border: 1px solid var(--border-color);
       padding: 3px 6px;
       border-radius: 4px;
       font-size: 10px;
@@ -202,7 +261,7 @@
 <body>
 
   <div class="header">
-    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v4.0)</span></h1>
+    <h1>📋 Задачи и дедлайны <span style="font-size: 11px; color: var(--hint); font-weight: normal;">(v4.1)</span></h1>
     <span id="roleBadge" class="badge">Загрузка...</span>
   </div>
 
@@ -249,18 +308,16 @@
     const BOT_USERNAME = 'my_timer_tasks_bot';
     const APP_SHORT_NAME = 'app';
 
-    // ==============================================================
-    // ВСТАВЬТЕ СЮДА ВАШИ ДАННЫЕ ИЗ НАСТРОЕК ПРОЕКТА FIREBASE:
+    // Вставьте ваши параметры конфигурации Firebase:
     const firebaseConfig = {
       apiKey: "AIzaSyCUWPTvlHldC20LL-UQVMM7RAuidQyiNlY",
-      authDomain: "telegram-timer-tasks-fdfa9.firebaseapp.com",
-      databaseURL: "https://telegram-timer-tasks-fdfa9-default-rtdb.europe-west1.firebasedatabase.app/",
-      projectId: "telegram-timer-tasks-fdfa9",
-      storageBucket: "telegram-timer-tasks-fdfa9.firebasestorage.app",
-      messagingSenderId: "378662190866",
-      appId: "1:378662190866:web:9cf67c57c37bc1cbaf7dcb"
+  authDomain: "telegram-timer-tasks-fdfa9.firebaseapp.com",
+  databaseURL: "https://telegram-timer-tasks-fdfa9-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "telegram-timer-tasks-fdfa9",
+  storageBucket: "telegram-timer-tasks-fdfa9.firebasestorage.app",
+  messagingSenderId: "378662190866",
+  appId: "1:378662190866:web:9cf67c57c37bc1cbaf7dcb"
     };
-    // ==============================================================
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
@@ -344,7 +401,6 @@
           updated_at: Date.now()
         });
       } else if (!isAdmin) {
-        // Поиск сохраненной комнаты
         const snapshot = await db.ref('project_members').once('value');
         const membersData = snapshot.val() || {};
         for (const [rName, users] of Object.entries(membersData)) {
@@ -578,8 +634,8 @@
         chipEl.style.color = '#fff';
         setTimeout(() => {
           chipEl.textContent = orig;
-          chipEl.style.background = '#e2e8f0';
-          chipEl.style.color = '#334155';
+          chipEl.style.background = '';
+          chipEl.style.color = '';
         }, 1500);
       });
     }
